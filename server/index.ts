@@ -22,6 +22,7 @@ type AuthenticatedRequest = Request & {
 type ErrorPayload = {
   error: string;
   details?: string;
+  missingEnv?: string[];
 };
 
 type DateInputResult =
@@ -30,24 +31,45 @@ type DateInputResult =
 
 type ExpenseCategory = 'Software' | 'Marketing' | 'Hardware' | 'Travel' | 'Payroll' | 'Office' | 'Legal' | 'Other';
 
-const connectionString = process.env.DATABASE_URL;
+const requiredEnvVars = ['DATABASE_URL', 'JWT_SECRET'] as const;
+type RequiredEnvVar = (typeof requiredEnvVars)[number];
 
-if (!connectionString) {
-  throw new Error('DATABASE_URL is required. Copy .env.example to .env and set your Supabase connection string.');
-}
+let pool: Pool | null = null;
 
-const pool = new Pool({
-  connectionString,
-  ssl: {
-    rejectUnauthorized: false
+const getMissingEnvVars = (envVars: readonly RequiredEnvVar[] = requiredEnvVars) => {
+  return envVars.filter((name) => !process.env[name]);
+};
+
+const getDatabasePool = () => {
+  const connectionString = process.env.DATABASE_URL;
+
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is required. Set it to your Supabase pooled connection string.');
   }
-});
 
-const JWT_SECRET = process.env.JWT_SECRET;
+  pool ??= new Pool({
+    connectionString,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
 
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET is required. Set it to a long random secret in your environment.');
-}
+  return pool;
+};
+
+const getJwtSecret = () => {
+  const jwtSecret = process.env.JWT_SECRET;
+
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET is required. Set it to a long random secret in your environment.');
+  }
+
+  return jwtSecret;
+};
+
+const query = (text: string, params?: unknown[]) => {
+  return getDatabasePool().query(text, params);
+};
 
 const expenseCategories = new Set<ExpenseCategory>([
   'Software',
@@ -74,6 +96,25 @@ const sendError = (res: Response, status: number, message: string, details?: str
   }
 
   return res.status(status).json(payload);
+};
+
+const sendRuntimeConfigError = (res: Response, missingEnv: readonly string[]) => {
+  const payload: ErrorPayload = {
+    error: 'API runtime is missing required configuration.',
+    missingEnv: [...missingEnv]
+  };
+
+  return res.status(503).json(payload);
+};
+
+const requireRuntimeConfig: RequestHandler = (_req, res, next) => {
+  const missingEnv = getMissingEnvVars();
+
+  if (missingEnv.length > 0) {
+    return sendRuntimeConfigError(res, missingEnv);
+  }
+
+  next();
 };
 
 const isAuthUser = (value: unknown): value is AuthUser => {
@@ -144,6 +185,49 @@ const isUuid = (value: string) => uuidPattern.test(value);
 app.use(cors());
 app.use(express.json());
 
+app.get('/api/health', async (_req, res) => {
+  const missingEnv = getMissingEnvVars();
+  const config = Object.fromEntries(
+    requiredEnvVars.map((name) => [name, Boolean(process.env[name])])
+  ) as Record<RequiredEnvVar, boolean>;
+
+  let database: 'not_configured' | 'ok' | 'error' = process.env.DATABASE_URL ? 'ok' : 'not_configured';
+  let databaseError: string | undefined;
+
+  if (process.env.DATABASE_URL) {
+    try {
+      await query('SELECT 1');
+    } catch (error) {
+      database = 'error';
+      databaseError = getErrorMessage(error);
+    }
+  }
+
+  const ok = missingEnv.length === 0 && database === 'ok';
+  const payload: {
+    ok: boolean;
+    service: string;
+    config: Record<RequiredEnvVar, boolean>;
+    missingEnv: string[];
+    database: typeof database;
+    details?: string;
+  } = {
+    ok,
+    service: 'chameleon-finance-api',
+    config,
+    missingEnv,
+    database
+  };
+
+  if (databaseError && process.env.NODE_ENV !== 'production') {
+    payload.details = databaseError;
+  }
+
+  return res.status(ok ? 200 : 503).json(payload);
+});
+
+app.use('/api', requireRuntimeConfig);
+
 // Middleware to verify JWT token
 const authenticateToken: RequestHandler = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -151,7 +235,13 @@ const authenticateToken: RequestHandler = (req, res, next) => {
 
   if (!token) return sendError(res, 401, 'Access token required');
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  const missingEnv = getMissingEnvVars(['JWT_SECRET']);
+
+  if (missingEnv.length > 0) {
+    return sendRuntimeConfigError(res, missingEnv);
+  }
+
+  jwt.verify(token, getJwtSecret(), (err, user) => {
     if (err || !isAuthUser(user)) return sendError(res, 403, 'Invalid token');
 
     (req as AuthenticatedRequest).user = {
@@ -172,7 +262,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await query(
       `SELECT id, email, raw_user_meta_data->>'name' as name, 
               raw_user_meta_data->>'avatar_url' as avatar_url, 
               raw_user_meta_data->>'role' as role,
@@ -195,7 +285,7 @@ app.post('/api/auth/login', async (req, res) => {
       role: dbUser.role || 'Partner'
     };
 
-    const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign(userPayload, getJwtSecret(), { expiresIn: '24h' });
     res.json({ token, user: userPayload });
   } catch (error) {
     console.error('Login error:', error);
@@ -206,7 +296,7 @@ app.post('/api/auth/login', async (req, res) => {
 // 2. Get Partner Profiles
 app.get('/api/partners', authenticateToken, async (_req, res) => {
   try {
-    const result = await pool.query(
+    const result = await query(
       `SELECT id, name, email, avatar_url, role FROM public.profiles ORDER BY name`
     );
     res.json(result.rows);
@@ -218,7 +308,7 @@ app.get('/api/partners', authenticateToken, async (_req, res) => {
 // 3. Get Investments
 app.get('/api/investments', authenticateToken, async (_req, res) => {
   try {
-    const result = await pool.query(
+    const result = await query(
       `SELECT i.*, p.name as partner_name, p.avatar_url as partner_avatar 
        FROM public.investments i
        LEFT JOIN public.profiles p ON i.created_by = p.id
@@ -257,7 +347,7 @@ app.post('/api/investments', authenticateToken, async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await query(
       `INSERT INTO public.investments (title, amount, date, investor_name, equity_percentage, description, created_by)
        VALUES ($1, $2, COALESCE($3, CURRENT_DATE), $4, $5, $6, $7)
        RETURNING *`,
@@ -266,7 +356,7 @@ app.post('/api/investments', authenticateToken, async (req, res) => {
     
     // Return the newly created investment with partner details
     const newInvest = result.rows[0];
-    const details = await pool.query(
+    const details = await query(
       `SELECT i.*, p.name as partner_name, p.avatar_url as partner_avatar 
        FROM public.investments i
        LEFT JOIN public.profiles p ON i.created_by = p.id
@@ -282,7 +372,7 @@ app.post('/api/investments', authenticateToken, async (req, res) => {
 // 5. Get Expenses
 app.get('/api/expenses', authenticateToken, async (_req, res) => {
   try {
-    const result = await pool.query(
+    const result = await query(
       `SELECT e.*, 
               p1.name as spent_by_name, p1.avatar_url as spent_by_avatar,
               p2.name as approved_by_name, p2.avatar_url as approved_by_avatar
@@ -323,7 +413,7 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await query(
       `INSERT INTO public.expenses (title, amount, date, category, description, status, created_by)
        VALUES ($1, $2, COALESCE($3, CURRENT_DATE), $4, $5, 'Pending', $6)
        RETURNING *`,
@@ -331,7 +421,7 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
     );
 
     const newExpense = result.rows[0];
-    const details = await pool.query(
+    const details = await query(
       `SELECT e.*, 
               p1.name as spent_by_name, p1.avatar_url as spent_by_avatar,
               p2.name as approved_by_name, p2.avatar_url as approved_by_avatar
@@ -358,7 +448,7 @@ app.post('/api/expenses/:id/approve', authenticateToken, async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await query(
       `UPDATE public.expenses 
        SET status = 'Approved', approved_by = $1, approved_at = NOW()
        WHERE id = $2 AND status = 'Pending'
@@ -367,7 +457,7 @@ app.post('/api/expenses/:id/approve', authenticateToken, async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      const existing = await pool.query(
+      const existing = await query(
         `SELECT status FROM public.expenses WHERE id = $1`,
         [id]
       );
@@ -380,7 +470,7 @@ app.post('/api/expenses/:id/approve', authenticateToken, async (req, res) => {
     }
 
     const updatedExpense = result.rows[0];
-    const details = await pool.query(
+    const details = await query(
       `SELECT e.*, 
               p1.name as spent_by_name, p1.avatar_url as spent_by_avatar,
               p2.name as approved_by_name, p2.avatar_url as approved_by_avatar
@@ -407,7 +497,7 @@ app.post('/api/expenses/:id/reject', authenticateToken, async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await query(
       `UPDATE public.expenses 
        SET status = 'Rejected', approved_by = $1, approved_at = NOW()
        WHERE id = $2 AND status = 'Pending'
@@ -416,7 +506,7 @@ app.post('/api/expenses/:id/reject', authenticateToken, async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      const existing = await pool.query(
+      const existing = await query(
         `SELECT status FROM public.expenses WHERE id = $1`,
         [id]
       );
@@ -429,7 +519,7 @@ app.post('/api/expenses/:id/reject', authenticateToken, async (req, res) => {
     }
 
     const updatedExpense = result.rows[0];
-    const details = await pool.query(
+    const details = await query(
       `SELECT e.*, 
               p1.name as spent_by_name, p1.avatar_url as spent_by_avatar,
               p2.name as approved_by_name, p2.avatar_url as approved_by_avatar
@@ -461,7 +551,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
 
 app.use(errorHandler);
 
-if (process.env.NODE_ENV !== 'production') {
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
   app.listen(port, () => {
     console.log(`Chameleon Tech Finance API listening at http://localhost:${port}`);
   });

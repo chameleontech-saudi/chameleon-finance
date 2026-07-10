@@ -11,6 +11,7 @@ type LoginResponse = {
   user?: Partner;
   error?: string;
   details?: string;
+  missingEnv?: string[];
 };
 
 const readLoginResponse = async (response: Response): Promise<LoginResponse> => {
@@ -58,11 +59,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       const data = await readLoginResponse(response);
 
       if (!response.ok) {
+        const missingEnv = data.missingEnv?.length ? ` Missing: ${data.missingEnv.join(', ')}.` : '';
         const message = data.error?.startsWith('A server error')
           ? 'The login service returned a server error. Please try again shortly.'
           : data.error || data.details || 'Login failed';
 
-        throw new Error(message);
+        throw new Error(`${message}${missingEnv}`);
       }
 
       if (!data.token || !data.user) {
