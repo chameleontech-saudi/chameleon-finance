@@ -107,6 +107,7 @@ DECLARE
   sarah_id UUID := '5a8a0000-0000-0000-0000-000000000002';
   marcus_id UUID := '3a8c0000-0000-0000-0000-000000000003';
   elena_id UUID := 'e1e80000-0000-0000-0000-000000000004';
+  admin_id UUID := 'ad100000-0000-0000-0000-000000000005';
   pw_hash TEXT := crypt('Chameleon2026!', gen_salt('bf', 10));
 BEGIN
   -- Insert Alex Mercer
@@ -141,13 +142,22 @@ BEGIN
     SELECT id INTO elena_id FROM auth.users WHERE email = 'elena@chameleon.tech';
   END IF;
 
+  -- Insert Admin User
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@chameleontech.com') THEN
+    INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user)
+    VALUES (admin_id, '00000000-0000-0000-0000-000000000000', 'admin@chameleontech.com', pw_hash, now(), 'authenticated', '{"provider":"email","providers":["email"]}', '{"name":"Admin Partner","avatar_url":"https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150","role":"Managing Partner"}', now(), now(), false);
+  ELSE
+    SELECT id INTO admin_id FROM auth.users WHERE email = 'admin@chameleontech.com';
+  END IF;
+
   -- Ensure profiles exist for seeded users (needed if users already exist in auth.users but profiles table was dropped/recreated)
   INSERT INTO public.profiles (id, name, email, avatar_url, role)
   VALUES 
     (alex_id, 'Alex Mercer', 'alex@chameleon.tech', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', 'Managing Partner'),
     (sarah_id, 'Sarah Chen', 'sarah@chameleon.tech', 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150', 'Investment Director'),
     (marcus_id, 'Marcus Thompson', 'marcus@chameleon.tech', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', 'Financial Officer'),
-    (elena_id, 'Elena Rostova', 'elena@chameleon.tech', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', 'Operations Partner')
+    (elena_id, 'Elena Rostova', 'elena@chameleon.tech', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', 'Operations Partner'),
+    (admin_id, 'Admin Partner', 'admin@chameleontech.com', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150', 'Managing Partner')
   ON CONFLICT (id) DO NOTHING;
 
   -- Seed Investments

@@ -1,20 +1,13 @@
 import React, { useState } from 'react';
-import { Lock, Mail, Users, ArrowRight } from 'lucide-react';
+import { Lock, Mail, ArrowRight } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: (token: string, user: any) => void;
 }
 
-const PARTNER_PRESETS = [
-  { name: 'Alex Mercer', email: 'alex@chameleon.tech', role: 'Managing Partner' },
-  { name: 'Sarah Chen', email: 'sarah@chameleon.tech', role: 'Investment Director' },
-  { name: 'Marcus Thompson', email: 'marcus@chameleon.tech', role: 'Financial Officer' },
-  { name: 'Elena Rostova', email: 'elena@chameleon.tech', role: 'Operations Partner' }
-];
-
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('Chameleon2026!'); // Set default password for easy demo
+  const [email, setEmail] = useState('admin@chameleontech.com');
+  const [password, setPassword] = useState('Chameleon2026!');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,11 +45,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSelectPreset = (presetEmail: string) => {
-    setEmail(presetEmail);
-    setError(null);
   };
 
   return (
@@ -127,7 +115,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 id="email-input"
                 className="input-control"
                 type="email"
-                placeholder="partner@chameleon.tech"
+                placeholder="admin@chameleontech.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 style={{ paddingLeft: '44px' }}
@@ -166,47 +154,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             )}
           </button>
         </form>
-
-        {/* Quick Presets for Demo */}
-        <div style={{
-          marginTop: '32px',
-          paddingTop: '24px',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          textAlign: 'left'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <Users size={16} style={{ color: 'var(--primary)' }} />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Quick Login Presets (Demo)
-            </span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            {PARTNER_PRESETS.map((preset) => (
-              <button
-                key={preset.email}
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => handleSelectPreset(preset.email)}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '0.75rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  gap: '2px',
-                  borderRadius: 'var(--radius-sm)',
-                  textAlign: 'left',
-                  background: email === preset.email ? 'var(--primary-glow)' : 'rgba(255,255,255,0.02)',
-                  borderColor: email === preset.email ? 'var(--primary-border)' : 'var(--border-color)',
-                  color: email === preset.email ? 'var(--primary)' : 'var(--text-primary)'
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>{preset.name}</span>
-                <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>{preset.role}</span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
