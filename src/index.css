@@ -489,6 +489,44 @@ select.input-control {
   color: var(--text-primary);
 }
 
+.dual-currency {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.12;
+  vertical-align: middle;
+}
+
+.dual-currency-right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.dual-currency-primary {
+  color: inherit;
+}
+
+.dual-currency-secondary {
+  font-family: var(--font-sans);
+  font-size: 0.78em;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.stat-value .dual-currency-secondary {
+  font-size: 0.48em;
+  line-height: 1.2;
+}
+
+.data-table .dual-currency {
+  font-size: 0.95rem;
+}
+
+.data-table .dual-currency-secondary {
+  font-size: 0.78rem;
+}
+
 .stat-change {
   font-size: 0.8rem;
   display: flex;

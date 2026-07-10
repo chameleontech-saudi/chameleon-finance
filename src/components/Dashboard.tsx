@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
-  DollarSign, 
+  Wallet, 
   Briefcase, 
   CreditCard, 
   Clock, 
@@ -59,6 +59,44 @@ const isMoneyValue = (value: unknown): value is MoneyValue => {
 const toNumber = (value: MoneyValue | null | undefined) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+// Amounts are entered and stored in SAR; INR is shown as a read-only equivalent.
+const SAR_TO_INR_RATE = 25.41;
+
+const sarFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'SAR',
+  maximumFractionDigits: 0
+});
+
+const inrFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0
+});
+
+const compactSarFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'SAR',
+  notation: 'compact',
+  maximumFractionDigits: 1
+});
+
+const formatSar = (value: MoneyValue | null | undefined) => {
+  return sarFormatter.format(toNumber(value));
+};
+
+const formatInrEquivalent = (value: MoneyValue | null | undefined) => {
+  return inrFormatter.format(toNumber(value) * SAR_TO_INR_RATE);
+};
+
+const formatDualCurrencyText = (value: MoneyValue | null | undefined) => {
+  return `${formatSar(value)} / ${formatInrEquivalent(value)}`;
+};
+
+const formatCompactSar = (value: MoneyValue | null | undefined) => {
+  return compactSarFormatter.format(toNumber(value));
 };
 
 const parsePositiveMoney = (value: string) => {
@@ -425,12 +463,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
     }
   };
 
-  const formatCurrency = (val: MoneyValue) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0
-    }).format(toNumber(val));
+  const renderCurrencyAmount = (val: MoneyValue, align: 'left' | 'right' = 'left') => {
+    return (
+      <span className={`dual-currency dual-currency-${align}`}>
+        <span className="dual-currency-primary">{formatSar(val)}</span>
+        <span className="dual-currency-secondary">{formatInrEquivalent(val)}</span>
+      </span>
+    );
   };
 
   const formatPercent = (val: MoneyValue | null | undefined) => {
@@ -562,21 +601,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                 <div className="stat-content">
                   <span className="stat-label">Treasury Cash Balance</span>
                   <span className="stat-value" style={{ color: 'var(--primary)', textShadow: '0 0 20px rgba(16, 185, 129, 0.2)' }}>
-                    {formatCurrency(currentBalance)}
+                    {renderCurrencyAmount(currentBalance)}
                   </span>
                   <div className="stat-change" style={{ color: '#34d399' }}>
                     <TrendingUp size={14} /> Runway active
                   </div>
                 </div>
                 <div className="stat-icon" style={{ borderColor: 'rgba(16,185,129,0.2)', color: 'var(--primary)' }}>
-                  <DollarSign size={20} />
+                  <Wallet size={20} />
                 </div>
               </div>
 
               <div className="stat-card glass">
                 <div className="stat-content">
                   <span className="stat-label">Total Seed Funding</span>
-                  <span className="stat-value">{formatCurrency(totalInvestments)}</span>
+                  <span className="stat-value">{renderCurrencyAmount(totalInvestments)}</span>
                   <span className="stat-change" style={{ color: 'var(--text-secondary)' }}>
                     {investments.length} Investments
                   </span>
@@ -589,7 +628,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
               <div className="stat-card glass">
                 <div className="stat-content">
                   <span className="stat-label">Operational Outflow</span>
-                  <span className="stat-value">{formatCurrency(approvedExpenses)}</span>
+                  <span className="stat-value">{renderCurrencyAmount(approvedExpenses)}</span>
                   <span className="stat-change" style={{ color: 'var(--text-secondary)' }}>
                     Approved cash expenses
                   </span>
@@ -603,7 +642,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                 <div className="stat-content">
                   <span className="stat-label">Pending Approval Requests</span>
                   <span className="stat-value" style={{ color: pendingExpenses > 0 ? 'var(--warning)' : 'var(--text-primary)' }}>
-                    {formatCurrency(pendingExpenses)}
+                    {renderCurrencyAmount(pendingExpenses)}
                   </span>
                   <span className="stat-change" style={{ color: 'var(--text-secondary)' }}>
                     {expenses.filter(e => e.status === 'Pending').length} requests pending review
@@ -642,7 +681,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                             </linearGradient>
                           </defs>
                           <XAxis dataKey="month" stroke="var(--text-muted)" tickLine={false} />
-                          <YAxis stroke="var(--text-muted)" tickLine={false} tickFormatter={(val) => `$${val/1000}k`} />
+                          <YAxis stroke="var(--text-muted)" tickLine={false} tickFormatter={(val) => formatCompactSar(val)} />
                           <Tooltip 
                             contentStyle={{ 
                               background: '#1e293b', 
@@ -650,7 +689,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                               borderRadius: '8px',
                               color: '#fff' 
                             }} 
-                            formatter={(value: unknown) => [formatCurrency(isMoneyValue(value) ? value : 0), undefined]}
+                            formatter={(value: unknown) => [formatDualCurrencyText(isMoneyValue(value) ? value : 0), undefined]}
                           />
                           <Area type="monotone" dataKey="Inflow" stroke="var(--primary)" fillOpacity={1} fill="url(#colorInflow)" strokeWidth={2} />
                           <Area type="monotone" dataKey="Outflow" stroke="#f59e0b" fillOpacity={1} fill="url(#colorOutflow)" strokeWidth={2} />
@@ -697,7 +736,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                   borderRadius: '8px',
                                   color: '#fff' 
                                 }}
-                                formatter={(value: unknown) => [formatCurrency(isMoneyValue(value) ? value : 0), undefined]}
+                                formatter={(value: unknown) => [formatDualCurrencyText(isMoneyValue(value) ? value : 0), undefined]}
                               />
                             </PieChart>
                           </ResponsiveContainer>
@@ -707,7 +746,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                             <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
                               <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: COLORS[idx % COLORS.length] }} />
                               <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{item.name}</span>
-                              <span style={{ fontWeight: 600, marginLeft: 'auto' }}>{formatCurrency(item.value)}</span>
+                              <span style={{ fontWeight: 600, marginLeft: 'auto' }}>
+                                {renderCurrencyAmount(item.value, 'right')}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -770,7 +811,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                 {formatDate(exp.date)}
                               </td>
                               <td style={{ fontWeight: 700, color: 'var(--primary)' }}>
-                                {formatCurrency(exp.amount)}
+                                {renderCurrencyAmount(exp.amount)}
                               </td>
                               <td>
                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -861,7 +902,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                               {formatDate(inv.date)}
                             </td>
                             <td style={{ fontWeight: 700, color: 'var(--primary)', textAlign: 'right' }}>
-                              {formatCurrency(inv.amount)}
+                              {renderCurrencyAmount(inv.amount, 'right')}
                             </td>
                           </tr>
                         ))}
@@ -976,7 +1017,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                               )}
                             </td>
                             <td style={{ fontWeight: 700, color: exp.status === 'Rejected' ? 'var(--text-muted)' : 'var(--primary)', textAlign: 'right' }}>
-                              {formatCurrency(exp.amount)}
+                              {renderCurrencyAmount(exp.amount, 'right')}
                             </td>
                           </tr>
                         ))}
@@ -1026,7 +1067,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group">
-                  <label className="form-label">Amount (USD) *</label>
+                  <label className="form-label">Amount (SAR) *</label>
                   <input 
                     type="number" 
                     step="0.01"
@@ -1138,7 +1179,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group">
-                  <label className="form-label">Amount (USD) *</label>
+                  <label className="form-label">Amount (SAR) *</label>
                   <input 
                     type="number" 
                     step="0.01"
