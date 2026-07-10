@@ -141,6 +141,15 @@ BEGIN
     SELECT id INTO elena_id FROM auth.users WHERE email = 'elena@chameleon.tech';
   END IF;
 
+  -- Ensure profiles exist for seeded users (needed if users already exist in auth.users but profiles table was dropped/recreated)
+  INSERT INTO public.profiles (id, name, email, avatar_url, role)
+  VALUES 
+    (alex_id, 'Alex Mercer', 'alex@chameleon.tech', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', 'Managing Partner'),
+    (sarah_id, 'Sarah Chen', 'sarah@chameleon.tech', 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150', 'Investment Director'),
+    (marcus_id, 'Marcus Thompson', 'marcus@chameleon.tech', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', 'Financial Officer'),
+    (elena_id, 'Elena Rostova', 'elena@chameleon.tech', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', 'Operations Partner')
+  ON CONFLICT (id) DO NOTHING;
+
   -- Seed Investments
   INSERT INTO public.investments (title, amount, date, investor_name, equity_percentage, description, created_by)
   VALUES 

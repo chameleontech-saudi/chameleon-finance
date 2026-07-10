@@ -255,6 +255,10 @@ app.post('/api/expenses/:id/reject', authenticateToken, async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Chameleon Tech Finance API listening at http://localhost:${port}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`Chameleon Tech Finance API listening at http://localhost:${port}`);
+  });
+}
+
+export default app;
