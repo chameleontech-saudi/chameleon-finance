@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server/index.ts & vite",
+    "dev": "node --env-file-if-exists=.env scripts/check-env.mjs && (node --env-file-if-exists=.env --import tsx server/index.ts & vite)",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

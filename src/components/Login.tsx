@@ -1,9 +1,36 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
+import type { Partner } from '../types';
 
 interface LoginProps {
-  onLoginSuccess: (token: string, user: any) => void;
+  onLoginSuccess: (token: string, user: Partner) => void;
 }
+
+type LoginResponse = {
+  token?: string;
+  user?: Partner;
+  error?: string;
+  details?: string;
+};
+
+const readLoginResponse = async (response: Response): Promise<LoginResponse> => {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    try {
+      return await response.json();
+    } catch {
+      return {
+        error: `Login returned invalid JSON with status ${response.status}.`
+      };
+    }
+  }
+
+  const text = await response.text();
+  return {
+    error: text || `Login request failed with status ${response.status}.`
+  };
+};
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('admin@chameleontech.com');
@@ -28,10 +55,18 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify({ email, password })
       });
 
-      const data = await response.json();
+      const data = await readLoginResponse(response);
 
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        const message = data.error?.startsWith('A server error')
+          ? 'The login service returned a server error. Please try again shortly.'
+          : data.error || data.details || 'Login failed';
+
+        throw new Error(message);
+      }
+
+      if (!data.token || !data.user) {
+        throw new Error('Login response was missing authentication data.');
       }
 
       // Store in localStorage
@@ -39,9 +74,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       localStorage.setItem('chameleon_user', JSON.stringify(data.user));
       
       onLoginSuccess(data.token, data.user);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || 'An error occurred during authentication.');
+      setError(err instanceof Error ? err.message : 'An error occurred during authentication.');
     } finally {
       setLoading(false);
     }

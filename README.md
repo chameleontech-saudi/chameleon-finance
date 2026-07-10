@@ -1,32 +1,45 @@
-# React + TypeScript + Vite
+# Chameleon Finance Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Partner finance portal for tracking capital inflows, operational expenses, approval status, and treasury balance.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Install dependencies:
 
-## React Compiler
+   ```bash
+   npm install
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. Create a local environment file:
 
-## Expanding the Oxlint configuration
+   ```bash
+   cp .env.example .env
+   ```
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+3. Fill in `.env`:
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+   ```bash
+   DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/postgres
+   JWT_SECRET=replace-with-a-long-random-secret
+   ```
+
+4. Apply the Supabase schema in `supabase/migrations/schema.sql` to the target Supabase project.
+
+5. Start the local app:
+
+   ```bash
+   npm run dev
+   ```
+
+The Vite app proxies `/api` requests to the Express API on port `3001`.
+
+## Checks
+
+```bash
+npm run lint
+npm run build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Deployment
+
+Vercel routes `/api/*` to `api/index.ts` and all other routes to the Vite app. Set `DATABASE_URL` and `JWT_SECRET` in the Vercel project environment before deploying.

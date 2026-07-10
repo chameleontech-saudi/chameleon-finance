@@ -1,14 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
+import type { Partner } from './types';
 
-interface Partner {
-  id: string;
-  name: string;
-  email: string;
-  avatar_url: string;
-  role: string;
-}
+const normalizePartner = (value: unknown): Partner | null => {
+  if (!value || typeof value !== 'object') return null;
+
+  const user = value as Partial<Partner>;
+
+  if (
+    typeof user.id !== 'string' ||
+    typeof user.name !== 'string' ||
+    typeof user.email !== 'string' ||
+    typeof user.role !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatar_url: typeof user.avatar_url === 'string' ? user.avatar_url : null
+  };
+};
+
+const clearStoredSession = () => {
+  localStorage.removeItem('chameleon_token');
+  localStorage.removeItem('chameleon_user');
+};
 
 const App: React.FC = () => {
   const [token, setToken] = useState<string | null>(null);
@@ -21,8 +42,18 @@ const App: React.FC = () => {
     const storedUser = localStorage.getItem('chameleon_user');
 
     if (storedToken && storedUser) {
-      setToken(storedToken);
-      setCurrentUser(JSON.parse(storedUser));
+      try {
+        const parsedUser = normalizePartner(JSON.parse(storedUser));
+
+        if (parsedUser) {
+          setToken(storedToken);
+          setCurrentUser(parsedUser);
+        } else {
+          clearStoredSession();
+        }
+      } catch {
+        clearStoredSession();
+      }
     }
     setInitializing(false);
   }, []);
@@ -33,8 +64,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('chameleon_token');
-    localStorage.removeItem('chameleon_user');
+    clearStoredSession();
     setToken(null);
     setCurrentUser(null);
   };

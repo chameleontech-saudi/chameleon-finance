@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -25,42 +25,7 @@ import {
   Pie, 
   Cell
 } from 'recharts';
-
-interface Partner {
-  id: string;
-  name: string;
-  email: string;
-  avatar_url: string;
-  role: string;
-}
-
-interface Investment {
-  id: string;
-  title: string;
-  amount: number;
-  date: string;
-  investor_name: string;
-  equity_percentage: number;
-  description: string;
-  partner_name?: string;
-  partner_avatar?: string;
-}
-
-interface Expense {
-  id: string;
-  title: string;
-  amount: number;
-  date: string;
-  category: 'Software' | 'Marketing' | 'Hardware' | 'Travel' | 'Payroll' | 'Office' | 'Legal' | 'Other';
-  description: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
-  created_by: string;
-  spent_by_name?: string;
-  spent_by_avatar?: string;
-  approved_by_name?: string;
-  approved_by_avatar?: string;
-  approved_at?: string;
-}
+import type { Expense, ExpenseCategory, Investment, MoneyValue, Partner } from '../types';
 
 interface DashboardProps {
   token: string;
@@ -68,11 +33,119 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
+type ApiErrorResponse = {
+  error?: string;
+  details?: string;
+};
+
+type ChartPoint = {
+  month: string;
+  Inflow: number;
+  Outflow: number;
+};
+
+const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
+
+const todayInputValue = () => new Date().toISOString().split('T')[0];
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback;
+};
+
+const isMoneyValue = (value: unknown): value is MoneyValue => {
+  return typeof value === 'number' || typeof value === 'string';
+};
+
+const toNumber = (value: MoneyValue | null | undefined) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parsePositiveMoney = (value: string) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parsePercentage = (value: string) => {
+  if (!value.trim()) return 0;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : null;
+};
+
+const readJsonResponse = async <T,>(response: Response): Promise<T | ApiErrorResponse | null> => {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    return text ? { error: text } : null;
+  }
+
+  try {
+    return await response.json();
+  } catch {
+    return {
+      error: `Request returned invalid JSON with status ${response.status}.`
+    };
+  }
+};
+
+const requestJson = async <T,>(url: string, init?: RequestInit): Promise<T> => {
+  const response = await fetch(url, init);
+  const payload = await readJsonResponse<T>(response);
+
+  if (!response.ok) {
+    const apiError =
+      payload && typeof payload === 'object' && 'error' in payload
+        ? (payload as ApiErrorResponse).error || (payload as ApiErrorResponse).details
+        : null;
+
+    throw new Error(apiError || `Request failed with status ${response.status}.`);
+  }
+
+  if (!payload) {
+    throw new Error('Request returned an empty response.');
+  }
+
+  return payload as T;
+};
+
+const getMonthKey = (date: string) => {
+  const key = date.slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(key) ? key : null;
+};
+
+const formatMonthLabel = (monthKey: string) => {
+  const [year, month] = monthKey.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: '2-digit',
+    timeZone: 'UTC'
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+};
+
+const formatDate = (date: string) => {
+  const [year, month, day] = date.slice(0, 10).split('-').map(Number);
+
+  if (!year || !month || !day) {
+    return date;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'expenses'>('overview');
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
   
   // Modals state
   const [isInvestmentModalOpen, setIsInvestmentModalOpen] = useState(false);
@@ -82,17 +155,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
   const [newInvest, setNewInvest] = useState({
     title: '',
     amount: '',
-    date: new Date().toISOString().split('T')[0],
+    date: todayInputValue(),
     investor_name: '',
     equity_percentage: '',
     description: ''
   });
 
   // New Expense Form
-  const [newExpense, setNewExpense] = useState({
+  const [newExpense, setNewExpense] = useState<{
+    title: string;
+    amount: string;
+    date: string;
+    category: ExpenseCategory;
+    description: string;
+  }>({
     title: '',
     amount: '',
-    date: new Date().toISOString().split('T')[0],
+    date: todayInputValue(),
     category: 'Software',
     description: ''
   });
@@ -100,86 +179,80 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
   const [formError, setFormError] = useState<string | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
+
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
       
-      const [investsRes, expensesRes, partnersRes] = await Promise.all([
-        fetch('/api/investments', { headers }),
-        fetch('/api/expenses', { headers }),
-        fetch('/api/partners', { headers })
+      const [investsData, expensesData] = await Promise.all([
+        requestJson<Investment[]>('/api/investments', { headers }),
+        requestJson<Expense[]>('/api/expenses', { headers })
       ]);
-
-      if (!investsRes.ok || !expensesRes.ok || !partnersRes.ok) {
-        throw new Error('Failed to fetch finance portal data.');
-      }
-
-      const investsData = await investsRes.json();
-      const expensesData = await expensesRes.json();
 
       setInvestments(investsData);
       setExpenses(expensesData);
     } catch (err) {
       console.error(err);
+      setLoadError(getErrorMessage(err, 'Failed to fetch finance portal data.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
   // Calculations
-  const totalInvestments = investments.reduce((acc, curr) => acc + Number(curr.amount), 0);
+  const totalInvestments = investments.reduce((acc, curr) => acc + toNumber(curr.amount), 0);
   const approvedExpenses = expenses
     .filter(e => e.status === 'Approved')
-    .reduce((acc, curr) => acc + Number(curr.amount), 0);
+    .reduce((acc, curr) => acc + toNumber(curr.amount), 0);
   const pendingExpenses = expenses
     .filter(e => e.status === 'Pending')
-    .reduce((acc, curr) => acc + Number(curr.amount), 0);
+    .reduce((acc, curr) => acc + toNumber(curr.amount), 0);
   
   const currentBalance = totalInvestments - approvedExpenses;
 
   // Recharts: Calculate Monthly Aggregates for area chart
   const getChartData = () => {
-    // Generate map of month key "YYYY-MM" to { investments: 0, expenses: 0 }
-    const monthlyMap: Record<string, { month: string; Inflow: number; Outflow: number }> = {};
-    
-    // Sort transactions chronologically
-    const allDates = [
-      ...investments.map(i => i.date),
-      ...expenses.map(e => e.date)
-    ].sort();
+    const monthlyMap: Record<string, ChartPoint> = {};
+    const allMonthKeys = [
+      ...investments.map(i => getMonthKey(i.date)),
+      ...expenses.map(e => getMonthKey(e.date))
+    ].filter((monthKey): monthKey is string => Boolean(monthKey)).sort();
 
-    if (allDates.length === 0) return [];
+    if (allMonthKeys.length === 0) return [];
 
-    const minDate = new Date(allDates[0]);
-    const maxDate = new Date(allDates[allDates.length - 1]);
-    
-    // Populate month intervals
-    let tempDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-    while (tempDate <= maxDate) {
-      const monthKey = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`;
-      const monthLabel = tempDate.toLocaleString('default', { month: 'short', year: '2-digit' });
-      monthlyMap[monthKey] = { month: monthLabel, Inflow: 0, Outflow: 0 };
-      tempDate.setMonth(tempDate.getMonth() + 1);
+    let [cursorYear, cursorMonth] = allMonthKeys[0].split('-').map(Number);
+    const [maxYear, maxMonth] = allMonthKeys[allMonthKeys.length - 1].split('-').map(Number);
+
+    while (cursorYear < maxYear || (cursorYear === maxYear && cursorMonth <= maxMonth)) {
+      const monthKey = `${cursorYear}-${String(cursorMonth).padStart(2, '0')}`;
+      monthlyMap[monthKey] = { month: formatMonthLabel(monthKey), Inflow: 0, Outflow: 0 };
+
+      cursorMonth += 1;
+      if (cursorMonth > 12) {
+        cursorYear += 1;
+        cursorMonth = 1;
+      }
     }
 
     // Add Inflows (Investments)
     investments.forEach(inv => {
-      const k = inv.date.substring(0, 7);
-      if (monthlyMap[k]) {
-        monthlyMap[k].Inflow += Number(inv.amount);
+      const key = getMonthKey(inv.date);
+      if (key && monthlyMap[key]) {
+        monthlyMap[key].Inflow += toNumber(inv.amount);
       }
     });
 
     // Add Outflows (Approved Expenses)
     expenses.filter(e => e.status === 'Approved').forEach(exp => {
-      const k = exp.date.substring(0, 7);
-      if (monthlyMap[k]) {
-        monthlyMap[k].Outflow += Number(exp.amount);
+      const key = getMonthKey(exp.date);
+      if (key && monthlyMap[key]) {
+        monthlyMap[key].Outflow += toNumber(exp.amount);
       }
     });
 
@@ -190,7 +263,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
   const getCategoryData = () => {
     const categories: Record<string, number> = {};
     expenses.filter(e => e.status === 'Approved').forEach(exp => {
-      categories[exp.category] = (categories[exp.category] || 0) + Number(exp.amount);
+      categories[exp.category] = (categories[exp.category] || 0) + toNumber(exp.amount);
     });
     return Object.keys(categories).map(cat => ({
       name: cat,
@@ -200,39 +273,77 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
 
   const COLORS = ['#10b981', '#06b6d4', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#ef4444', '#64748b'];
 
+  const openInvestmentModal = () => {
+    setFormError(null);
+    setIsInvestmentModalOpen(true);
+  };
+
+  const closeInvestmentModal = () => {
+    setFormError(null);
+    setIsInvestmentModalOpen(false);
+  };
+
+  const openExpenseModal = () => {
+    setFormError(null);
+    setIsExpenseModalOpen(true);
+  };
+
+  const closeExpenseModal = () => {
+    setFormError(null);
+    setIsExpenseModalOpen(false);
+  };
+
   // Handle Approvals
   const handleExpenseAction = async (id: string, action: 'approve' | 'reject') => {
+    if (updatingExpenseId) return;
+
+    setUpdatingExpenseId(id);
     try {
-      const response = await fetch(`/api/expenses/${id}/${action}`, {
+      const updatedExpense = await requestJson<Expense>(`/api/expenses/${id}/${action}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      if (!response.ok) throw new Error(`Could not ${action} expense.`);
-      const updatedExpense = await response.json();
       
       // Update state
       setExpenses(prev => prev.map(e => e.id === id ? updatedExpense : e));
     } catch (err) {
       console.error(err);
-      alert(`Error updating expense transaction: ${action}`);
+      alert(getErrorMessage(err, `Could not ${action} expense.`));
+    } finally {
+      setUpdatingExpenseId(null);
     }
   };
 
   // Submit Investment
   const handleLogInvestment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newInvest.title || !newInvest.amount || !newInvest.investor_name) {
+    const title = newInvest.title.trim();
+    const investorName = newInvest.investor_name.trim();
+    const amount = parsePositiveMoney(newInvest.amount);
+    const equityPercentage = parsePercentage(newInvest.equity_percentage);
+
+    if (!title || !newInvest.amount || !investorName) {
       setFormError('Please fill in all required fields.');
+      return;
+    }
+
+    if (amount === null) {
+      setFormError('Investment amount must be greater than zero.');
+      return;
+    }
+
+    if (equityPercentage === null) {
+      setFormError('Equity percentage must be between 0 and 100.');
       return;
     }
 
     setFormSubmitting(true);
     setFormError(null);
     try {
-      const response = await fetch('/api/investments', {
+      const data = await requestJson<Investment>('/api/investments', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -240,26 +351,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
         },
         body: JSON.stringify({
           ...newInvest,
-          amount: parseFloat(newInvest.amount),
-          equity_percentage: newInvest.equity_percentage ? parseFloat(newInvest.equity_percentage) : 0
+          title,
+          investor_name: investorName,
+          amount,
+          equity_percentage: equityPercentage,
+          description: newInvest.description.trim()
         })
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to log investment.');
-
       setInvestments(prev => [data, ...prev]);
-      setIsInvestmentModalOpen(false);
+      closeInvestmentModal();
       setNewInvest({
         title: '',
         amount: '',
-        date: new Date().toISOString().split('T')[0],
+        date: todayInputValue(),
         investor_name: '',
         equity_percentage: '',
         description: ''
       });
-    } catch (err: any) {
-      setFormError(err.message || 'Server error logging investment.');
+    } catch (err) {
+      setFormError(getErrorMessage(err, 'Server error logging investment.'));
     } finally {
       setFormSubmitting(false);
     }
@@ -268,15 +379,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
   // Submit Expense Request
   const handleRequestExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newExpense.title || !newExpense.amount || !newExpense.category) {
+    const title = newExpense.title.trim();
+    const amount = parsePositiveMoney(newExpense.amount);
+
+    if (!title || !newExpense.amount || !newExpense.category) {
       setFormError('Please fill in all required fields.');
+      return;
+    }
+
+    if (amount === null) {
+      setFormError('Expense amount must be greater than zero.');
       return;
     }
 
     setFormSubmitting(true);
     setFormError(null);
     try {
-      const response = await fetch('/api/expenses', {
+      const data = await requestJson<Expense>('/api/expenses', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -284,35 +403,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
         },
         body: JSON.stringify({
           ...newExpense,
-          amount: parseFloat(newExpense.amount)
+          title,
+          amount,
+          description: newExpense.description.trim()
         })
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to request expense.');
-
       setExpenses(prev => [data, ...prev]);
-      setIsExpenseModalOpen(false);
+      closeExpenseModal();
       setNewExpense({
         title: '',
         amount: '',
-        date: new Date().toISOString().split('T')[0],
+        date: todayInputValue(),
         category: 'Software',
         description: ''
       });
-    } catch (err: any) {
-      setFormError(err.message || 'Server error requesting expense.');
+    } catch (err) {
+      setFormError(getErrorMessage(err, 'Server error requesting expense.'));
     } finally {
       setFormSubmitting(false);
     }
   };
 
-  const formatCurrency = (val: number) => {
+  const formatCurrency = (val: MoneyValue) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       maximumFractionDigits: 0
-    }).format(val);
+    }).format(toNumber(val));
+  };
+
+  const formatPercent = (val: MoneyValue | null | undefined) => {
+    const percentage = toNumber(val);
+
+    if (percentage <= 0) return '—';
+
+    return `${new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 2
+    }).format(percentage)}%`;
   };
 
   return (
@@ -352,7 +480,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
           <div className="sidebar-partner glass" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
             <img 
               className="partner-avatar" 
-              src={currentUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
+              src={currentUser.avatar_url || FALLBACK_AVATAR} 
               alt={currentUser.name} 
             />
             <div className="partner-info">
@@ -385,6 +513,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Loading finance metrics...</span>
           </div>
+        ) : loadError ? (
+          <div className="glass" style={{ padding: '32px', maxWidth: '720px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontFamily: 'Outfit', marginBottom: '8px' }}>
+              Could not load the finance dashboard
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '24px' }}>
+              {loadError}
+            </p>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-glow" onClick={() => void fetchData()}>
+                Retry
+              </button>
+              <button className="btn btn-secondary" onClick={onLogout}>
+                <LogOut size={16} /> Log Out
+              </button>
+            </div>
+          </div>
         ) : (
           <>
             {/* Top Greeting */}
@@ -398,13 +543,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button 
                   className="btn btn-secondary"
-                  onClick={() => setIsInvestmentModalOpen(true)}
+                  onClick={openInvestmentModal}
                 >
                   <Plus size={16} /> Log Capital
                 </button>
                 <button 
                   className="btn btn-primary btn-glow"
-                  onClick={() => setIsExpenseModalOpen(true)}
+                  onClick={openExpenseModal}
                 >
                   <Plus size={16} /> Request Expense
                 </button>
@@ -505,7 +650,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                               borderRadius: '8px',
                               color: '#fff' 
                             }} 
-                            formatter={(value: any) => [formatCurrency(Number(value)), undefined]}
+                            formatter={(value: unknown) => [formatCurrency(isMoneyValue(value) ? value : 0), undefined]}
                           />
                           <Area type="monotone" dataKey="Inflow" stroke="var(--primary)" fillOpacity={1} fill="url(#colorInflow)" strokeWidth={2} />
                           <Area type="monotone" dataKey="Outflow" stroke="#f59e0b" fillOpacity={1} fill="url(#colorOutflow)" strokeWidth={2} />
@@ -552,7 +697,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                   borderRadius: '8px',
                                   color: '#fff' 
                                 }}
-                                formatter={(value: any) => [formatCurrency(Number(value)), undefined]}
+                                formatter={(value: unknown) => [formatCurrency(isMoneyValue(value) ? value : 0), undefined]}
                               />
                             </PieChart>
                           </ResponsiveContainer>
@@ -603,8 +748,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                               <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   <img 
-                                    src={exp.spent_by_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
-                                    alt={exp.spent_by_name} 
+                                    src={exp.spent_by_avatar || FALLBACK_AVATAR} 
+                                    alt={exp.spent_by_name || 'Partner'} 
                                     style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
                                   />
                                   <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>{exp.spent_by_name || 'Partner'}</span>
@@ -622,7 +767,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                 </span>
                               </td>
                               <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                {new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                {formatDate(exp.date)}
                               </td>
                               <td style={{ fontWeight: 700, color: 'var(--primary)' }}>
                                 {formatCurrency(exp.amount)}
@@ -632,6 +777,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                   <button 
                                     className="btn btn-secondary"
                                     onClick={() => handleExpenseAction(exp.id, 'reject')}
+                                    disabled={updatingExpenseId === exp.id}
                                     style={{ padding: '6px 10px', fontSize: '0.75rem', color: 'var(--error)' }}
                                     title="Reject Request"
                                   >
@@ -640,6 +786,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                   <button 
                                     className="btn btn-primary"
                                     onClick={() => handleExpenseAction(exp.id, 'approve')}
+                                    disabled={updatingExpenseId === exp.id}
                                     style={{ padding: '6px 10px', fontSize: '0.75rem' }}
                                     title="Approve Request"
                                   >
@@ -665,7 +812,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                     <h3 style={{ fontSize: '1.2rem', fontFamily: 'Outfit' }}>Capital Inflow Ledger</h3>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Institutional investments and strategic funding details</p>
                   </div>
-                  <button className="btn btn-primary btn-glow" onClick={() => setIsInvestmentModalOpen(true)}>
+                  <button className="btn btn-primary btn-glow" onClick={openInvestmentModal}>
                     <Plus size={16} /> Log Capital
                   </button>
                 </div>
@@ -700,18 +847,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <img 
-                                  src={inv.partner_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
-                                  alt={inv.partner_name} 
+                                  src={inv.partner_avatar || FALLBACK_AVATAR} 
+                                  alt={inv.partner_name || 'Partner'} 
                                   style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
                                 />
-                                <span style={{ fontSize: '0.85rem' }}>{inv.partner_name}</span>
+                                <span style={{ fontSize: '0.85rem' }}>{inv.partner_name || 'Partner'}</span>
                               </div>
                             </td>
                             <td style={{ fontWeight: 600, color: 'var(--secondary)' }}>
-                              {inv.equity_percentage > 0 ? `${inv.equity_percentage}%` : '—'}
+                              {formatPercent(inv.equity_percentage)}
                             </td>
                             <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                              {new Date(inv.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {formatDate(inv.date)}
                             </td>
                             <td style={{ fontWeight: 700, color: 'var(--primary)', textAlign: 'right' }}>
                               {formatCurrency(inv.amount)}
@@ -733,7 +880,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                     <h3 style={{ fontSize: '1.2rem', fontFamily: 'Outfit' }}>Operational Expenses Ledger</h3>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Full record of disbursements, expenses, and pending claims</p>
                   </div>
-                  <button className="btn btn-primary btn-glow" onClick={() => setIsExpenseModalOpen(true)}>
+                  <button className="btn btn-primary btn-glow" onClick={openExpenseModal}>
                     <Plus size={16} /> Request Expense
                   </button>
                 </div>
@@ -768,11 +915,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <img 
-                                  src={exp.spent_by_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
-                                  alt={exp.spent_by_name} 
+                                  src={exp.spent_by_avatar || FALLBACK_AVATAR} 
+                                  alt={exp.spent_by_name || 'Partner'} 
                                   style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
                                 />
-                                <span style={{ fontSize: '0.85rem' }}>{exp.spent_by_name}</span>
+                                <span style={{ fontSize: '0.85rem' }}>{exp.spent_by_name || 'Partner'}</span>
                               </div>
                             </td>
                             <td>
@@ -781,7 +928,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                               </span>
                             </td>
                             <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                              {new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {formatDate(exp.date)}
                             </td>
                             <td>
                               <span className={`badge ${
@@ -799,6 +946,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                   <button 
                                     className="btn btn-secondary"
                                     onClick={() => handleExpenseAction(exp.id, 'reject')}
+                                    disabled={updatingExpenseId === exp.id}
                                     style={{ padding: '4px 6px', borderRadius: 'var(--radius-sm)' }}
                                     title="Reject"
                                   >
@@ -807,6 +955,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                   <button 
                                     className="btn btn-primary"
                                     onClick={() => handleExpenseAction(exp.id, 'approve')}
+                                    disabled={updatingExpenseId === exp.id}
                                     style={{ padding: '4px 6px', borderRadius: 'var(--radius-sm)' }}
                                     title="Approve"
                                   >
@@ -817,7 +966,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                 exp.approved_by_name ? (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                                     <img 
-                                      src={exp.approved_by_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
+                                      src={exp.approved_by_avatar || FALLBACK_AVATAR} 
                                       alt={exp.approved_by_name} 
                                       style={{ width: '18px', height: '18px', borderRadius: '50%', objectFit: 'cover' }}
                                     />
@@ -843,12 +992,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
 
       {/* MODAL 1: LOG INVESTMENT */}
       {isInvestmentModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsInvestmentModalOpen(false)}>
+        <div className="modal-overlay" onClick={closeInvestmentModal}>
           <div className="glass-premium modal-content" style={{ padding: '32px' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '1.3rem', fontFamily: 'Outfit' }}>Log Capital Investment</h3>
               <button 
-                onClick={() => setIsInvestmentModalOpen(false)}
+                onClick={closeInvestmentModal}
+                aria-label="Close investment form"
                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
               >
                 <X size={20} />
@@ -940,7 +1090,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
               </div>
 
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsInvestmentModalOpen(false)}>
+                <button type="button" className="btn btn-secondary" onClick={closeInvestmentModal}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary btn-glow" disabled={formSubmitting}>
@@ -954,12 +1104,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
 
       {/* MODAL 2: REQUEST EXPENSE */}
       {isExpenseModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsExpenseModalOpen(false)}>
+        <div className="modal-overlay" onClick={closeExpenseModal}>
           <div className="glass-premium modal-content" style={{ padding: '32px' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '1.3rem', fontFamily: 'Outfit' }}>Request Capital Disbursement</h3>
               <button 
-                onClick={() => setIsExpenseModalOpen(false)}
+                onClick={closeExpenseModal}
+                aria-label="Close expense form"
                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
               >
                 <X size={20} />
@@ -1016,7 +1167,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                 <select 
                   className="input-control"
                   value={newExpense.category}
-                  onChange={e => setNewExpense(prev => ({ ...prev, category: e.target.value }))}
+                  onChange={e => setNewExpense(prev => ({ ...prev, category: e.target.value as ExpenseCategory }))}
                   required
                 >
                   <option value="Software">Software & Cloud Services</option>
@@ -1043,7 +1194,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
               </div>
 
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsExpenseModalOpen(false)}>
+                <button type="button" className="btn btn-secondary" onClick={closeExpenseModal}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary btn-glow" disabled={formSubmitting}>

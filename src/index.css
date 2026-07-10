@@ -166,6 +166,13 @@ h1, h2, h3, h4, h5, h6 {
   transform: translateY(1px);
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+  transform: none;
+}
+
 .btn-primary {
   background: var(--primary);
   color: #000; /* Rich dark text for maximum contrast on bright green */
@@ -372,10 +379,15 @@ select.input-control {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 12px 16px;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
+  background: transparent;
   color: var(--text-secondary);
   text-decoration: none;
+  text-align: left;
+  font: inherit;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
