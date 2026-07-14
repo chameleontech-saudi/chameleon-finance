@@ -209,6 +209,27 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: var(--shadow-glow);
 }
 
+/* Action button rows (next to page/section titles) */
+.header-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Form rows that stack on small screens */
+.form-row {
+  display: grid;
+  gap: 16px;
+}
+
+.form-row-even {
+  grid-template-columns: 1fr 1fr;
+}
+
+.form-row-equity {
+  grid-template-columns: 1.2fr 0.8fr;
+}
+
 /* Form Styling - Premium UI Inputs */
 .form-group {
   display: flex;
@@ -613,34 +634,145 @@ select.input-control {
   background: rgba(255, 255, 255, 0.015);
 }
 
-/* Responsive Overrides */
+/* ============================================================
+   Responsive Overrides
+   ============================================================ */
+
+/* Tablet / small laptop: sidebar becomes a stacked top bar */
 @media (max-width: 900px) {
   .dashboard-container {
     flex-direction: column;
   }
-  
+
   .sidebar {
     width: 100%;
     height: auto;
     border-right: none;
     border-bottom: 1px solid var(--border-color);
-    position: relative;
+    position: sticky;
     top: 0;
-    padding: 20px;
+    z-index: 50;
+    padding: 16px 20px;
+    gap: 16px;
   }
-  
+
+  /* Logo + nav group: keep contents compact */
+  .sidebar > div:first-child {
+    gap: 16px !important;
+  }
+
   .sidebar-logo {
-    margin-bottom: 20px;
+    margin-bottom: 0;
   }
-  
+
   .sidebar-menu {
     flex-direction: row;
     flex-wrap: wrap;
-    margin-bottom: 15px;
+    flex-grow: 0;
+    gap: 6px;
   }
-  
+
+  .sidebar-item {
+    padding: 10px 14px;
+  }
+
+  .sidebar-partner {
+    margin-top: 0;
+    border-top: none;
+  }
+
   .main-viewport {
     width: 100%;
+    padding: 24px;
+  }
+}
+
+/* Phones (landscape) and small tablets */
+@media (max-width: 640px) {
+  .main-viewport {
+    padding: 16px;
+  }
+
+  .sidebar {
+    padding: 14px 16px;
+  }
+
+  .sidebar-logo {
+    justify-content: center;
+  }
+
+  .sidebar-menu {
+    justify-content: center;
+  }
+
+  .sidebar-item {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* Page/section headers stack their title and action buttons */
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .btn {
+    flex: 1 1 auto;
+  }
+
+  /* Single-column stat cards */
+  .stat-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .stat-card {
     padding: 20px;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  /* Form rows collapse to a single column inside modals */
+  .form-row-even,
+  .form-row-equity {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .modal-content {
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  /* Tighten table cells so more fits before horizontal scroll */
+  .data-table th,
+  .data-table td {
+    padding: 12px 10px;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 400px) {
+  .main-viewport {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 1.35rem;
+  }
+
+  .sidebar-logo span {
+    font-size: 1.1rem;
   }
 }

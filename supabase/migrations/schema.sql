@@ -98,83 +98,28 @@ CREATE POLICY "Allow authenticated insert" ON public.expenses
 CREATE POLICY "Allow authenticated update" ON public.expenses
   FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
--- Seed Partners (if not already existing in auth.users)
--- Standard Supabase structure for email auth users
--- Password hash: 'Chameleon2026!'
+-- Seed the single admin account (if not already existing in auth.users).
+-- Standard Supabase structure for email auth users.
+-- Password: 'Chameleon2026!'
+-- No demo partners, investments, or expenses are seeded — the ledger starts empty
+-- and is populated with real data through the app.
 DO $$
 DECLARE
-  alex_id UUID := 'a1e00000-0000-0000-0000-000000000001';
-  sarah_id UUID := '5a8a0000-0000-0000-0000-000000000002';
-  marcus_id UUID := '3a8c0000-0000-0000-0000-000000000003';
-  elena_id UUID := 'e1e80000-0000-0000-0000-000000000004';
   admin_id UUID := 'ad100000-0000-0000-0000-000000000005';
   pw_hash TEXT := crypt('Chameleon2026!', gen_salt('bf', 10));
 BEGIN
-  -- Insert Alex Mercer
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'alex@chameleon.tech') THEN
-    INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user)
-    VALUES (alex_id, '00000000-0000-0000-0000-000000000000', 'alex@chameleon.tech', pw_hash, now(), 'authenticated', '{"provider":"email","providers":["email"]}', '{"name":"Alex Mercer","avatar_url":"https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150","role":"Managing Partner"}', now(), now(), false);
-  ELSE
-    SELECT id INTO alex_id FROM auth.users WHERE email = 'alex@chameleon.tech';
-  END IF;
-
-  -- Insert Sarah Chen
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'sarah@chameleon.tech') THEN
-    INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user)
-    VALUES (sarah_id, '00000000-0000-0000-0000-000000000000', 'sarah@chameleon.tech', pw_hash, now(), 'authenticated', '{"provider":"email","providers":["email"]}', '{"name":"Sarah Chen","avatar_url":"https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150","role":"Investment Director"}', now(), now(), false);
-  ELSE
-    SELECT id INTO sarah_id FROM auth.users WHERE email = 'sarah@chameleon.tech';
-  END IF;
-
-  -- Insert Marcus Thompson
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'marcus@chameleon.tech') THEN
-    INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user)
-    VALUES (marcus_id, '00000000-0000-0000-0000-000000000000', 'marcus@chameleon.tech', pw_hash, now(), 'authenticated', '{"provider":"email","providers":["email"]}', '{"name":"Marcus Thompson","avatar_url":"https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150","role":"Financial Officer"}', now(), now(), false);
-  ELSE
-    SELECT id INTO marcus_id FROM auth.users WHERE email = 'marcus@chameleon.tech';
-  END IF;
-
-  -- Insert Elena Rostova
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'elena@chameleon.tech') THEN
-    INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user)
-    VALUES (elena_id, '00000000-0000-0000-0000-000000000000', 'elena@chameleon.tech', pw_hash, now(), 'authenticated', '{"provider":"email","providers":["email"]}', '{"name":"Elena Rostova","avatar_url":"https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150","role":"Operations Partner"}', now(), now(), false);
-  ELSE
-    SELECT id INTO elena_id FROM auth.users WHERE email = 'elena@chameleon.tech';
-  END IF;
-
   -- Insert Admin User
   IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@chameleontech.com') THEN
     INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user)
-    VALUES (admin_id, '00000000-0000-0000-0000-000000000000', 'admin@chameleontech.com', pw_hash, now(), 'authenticated', '{"provider":"email","providers":["email"]}', '{"name":"Admin Partner","avatar_url":"https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150","role":"Managing Partner"}', now(), now(), false);
+    VALUES (admin_id, '00000000-0000-0000-0000-000000000000', 'admin@chameleontech.com', pw_hash, now(), 'authenticated', '{"provider":"email","providers":["email"]}', '{"name":"Admin Partner","avatar_url":null,"role":"Managing Partner"}', now(), now(), false);
   ELSE
     SELECT id INTO admin_id FROM auth.users WHERE email = 'admin@chameleontech.com';
   END IF;
 
-  -- Ensure profiles exist for seeded users (needed if users already exist in auth.users but profiles table was dropped/recreated)
+  -- Ensure the admin profile exists (needed if the user already exists in
+  -- auth.users but the profiles table was dropped/recreated).
   INSERT INTO public.profiles (id, name, email, avatar_url, role)
-  VALUES 
-    (alex_id, 'Alex Mercer', 'alex@chameleon.tech', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', 'Managing Partner'),
-    (sarah_id, 'Sarah Chen', 'sarah@chameleon.tech', 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150', 'Investment Director'),
-    (marcus_id, 'Marcus Thompson', 'marcus@chameleon.tech', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', 'Financial Officer'),
-    (elena_id, 'Elena Rostova', 'elena@chameleon.tech', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', 'Operations Partner'),
-    (admin_id, 'Admin Partner', 'admin@chameleontech.com', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150', 'Managing Partner')
+  VALUES
+    (admin_id, 'Admin Partner', 'admin@chameleontech.com', null, 'Managing Partner')
   ON CONFLICT (id) DO NOTHING;
-
-  -- Seed Investments
-  INSERT INTO public.investments (title, amount, date, investor_name, equity_percentage, description, created_by)
-  VALUES 
-    ('Series A Seed Funding', 500000.00, '2026-01-15', 'Vertex Capital', 10.00, 'Initial institutional funding for scaling the engineering team.', alex_id),
-    ('Angel Follow-on Round', 125000.00, '2026-03-10', 'Elena Rostova', 2.50, 'Personal follow-on round for operational emergency runway.', elena_id),
-    ('Strategic Partnership Invest', 250000.00, '2026-05-20', 'Chameleon Holdings', 5.00, 'Strategic equity injection for expanding Middle East footprint.', sarah_id);
-
-  -- Seed Expenses
-  INSERT INTO public.expenses (title, amount, date, category, description, status, created_by, approved_by, approved_at)
-  VALUES 
-    ('AWS Cloud Hosting & DB Storage', 4250.00, '2026-06-01', 'Software', 'Monthly AWS bill for staging and production servers.', 'Approved', alex_id, marcus_id, now()),
-    ('Office Lease & Space Rental', 8500.00, '2026-06-05', 'Office', 'HQ office space rent for Q2.', 'Approved', elena_id, marcus_id, now()),
-    ('Q2 Branding & Agency Retainer', 12000.00, '2026-06-12', 'Marketing', 'Agency fee for rebranding website and marketing collaterals.', 'Approved', sarah_id, alex_id, now()),
-    ('New Employee Hardware (Macbooks)', 7800.00, '2026-06-18', 'Hardware', 'Purchased 3x MacBook Pro for new engineering hires.', 'Approved', marcus_id, alex_id, now()),
-    ('Dubai FinTech Summit Travel & Lodging', 3200.00, '2026-07-02', 'Travel', 'Flights and hotels for Sarah and Alex to attend the summit.', 'Pending', sarah_id, NULL, NULL),
-    ('Server Optimization Freelancer Fee', 1800.00, '2026-07-05', 'Payroll', 'Contract developer payout for optimization of SQL triggers.', 'Pending', alex_id, NULL, NULL),
-    ('External Legal Counsel Retainer', 5000.00, '2026-07-08', 'Legal', 'Contract review and IP compliance filings.', 'Rejected', alex_id, marcus_id, now());
 END $$;

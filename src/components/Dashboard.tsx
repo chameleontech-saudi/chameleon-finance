@@ -579,8 +579,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                   Real-time treasury balance, funding tracking, and operational expenses ledger.
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button 
+              <div className="header-actions">
+                <button
                   className="btn btn-secondary"
                   onClick={openInvestmentModal}
                 >
@@ -848,14 +848,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
             {/* TAB CONTENT: INVESTMENTS */}
             {activeTab === 'investments' && (
               <div className="glass" style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div className="section-header" style={{ marginBottom: '20px' }}>
                   <div>
                     <h3 style={{ fontSize: '1.2rem', fontFamily: 'Outfit' }}>Capital Inflow Ledger</h3>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Institutional investments and strategic funding details</p>
                   </div>
-                  <button className="btn btn-primary btn-glow" onClick={openInvestmentModal}>
-                    <Plus size={16} /> Log Capital
-                  </button>
+                  <div className="header-actions">
+                    <button className="btn btn-primary btn-glow" onClick={openInvestmentModal}>
+                      <Plus size={16} /> Log Capital
+                    </button>
+                  </div>
                 </div>
 
                 {investments.length === 0 ? (
@@ -916,14 +918,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
             {/* TAB CONTENT: EXPENSES */}
             {activeTab === 'expenses' && (
               <div className="glass" style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div className="section-header" style={{ marginBottom: '20px' }}>
                   <div>
                     <h3 style={{ fontSize: '1.2rem', fontFamily: 'Outfit' }}>Operational Expenses Ledger</h3>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Full record of disbursements, expenses, and pending claims</p>
                   </div>
-                  <button className="btn btn-primary btn-glow" onClick={openExpenseModal}>
-                    <Plus size={16} /> Request Expense
-                  </button>
+                  <div className="header-actions">
+                    <button className="btn btn-primary btn-glow" onClick={openExpenseModal}>
+                      <Plus size={16} /> Request Expense
+                    </button>
+                  </div>
                 </div>
 
                 {expenses.length === 0 ? (
@@ -1065,14 +1069,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="form-row form-row-even">
                 <div className="form-group">
                   <label className="form-label">Amount (SAR) *</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
                     min="0"
-                    className="input-control" 
+                    className="input-control"
                     placeholder="250000"
                     value={newInvest.amount}
                     onChange={e => setNewInvest(prev => ({ ...prev, amount: e.target.value }))}
@@ -1091,7 +1095,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '16px' }}>
+              <div className="form-row form-row-equity">
                 <div className="form-group">
                   <label className="form-label">Investor Name *</label>
                   <input 
@@ -1177,14 +1181,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="form-row form-row-even">
                 <div className="form-group">
                   <label className="form-label">Amount (SAR) *</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
                     min="0.01"
-                    className="input-control" 
+                    className="input-control"
                     placeholder="1200"
                     value={newExpense.amount}
                     onChange={e => setNewExpense(prev => ({ ...prev, amount: e.target.value }))}
