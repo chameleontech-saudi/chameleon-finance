@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -184,7 +184,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
-  
+  const [toast, setToast] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+
   // Modals state
   const [isInvestmentModalOpen, setIsInvestmentModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -243,19 +244,60 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
     void fetchData();
   }, [fetchData]);
 
+  // Auto-dismiss transient toast notifications.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  // While a modal is open, close it on Escape and lock background scroll.
+  const anyModalOpen = isInvestmentModalOpen || isExpenseModalOpen;
+  useEffect(() => {
+    if (!anyModalOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setFormError(null);
+        setIsInvestmentModalOpen(false);
+        setIsExpenseModalOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [anyModalOpen]);
+
+  // Pending expenses are referenced in several places; derive once.
+  const pendingList = useMemo(
+    () => expenses.filter(e => e.status === 'Pending'),
+    [expenses]
+  );
+
   // Calculations
-  const totalInvestments = investments.reduce((acc, curr) => acc + toNumber(curr.amount), 0);
-  const approvedExpenses = expenses
-    .filter(e => e.status === 'Approved')
-    .reduce((acc, curr) => acc + toNumber(curr.amount), 0);
-  const pendingExpenses = expenses
-    .filter(e => e.status === 'Pending')
-    .reduce((acc, curr) => acc + toNumber(curr.amount), 0);
-  
-  const currentBalance = totalInvestments - approvedExpenses;
+  const { totalInvestments, approvedExpenses, pendingExpenses, currentBalance } = useMemo(() => {
+    const investmentsTotal = investments.reduce((acc, curr) => acc + toNumber(curr.amount), 0);
+    const approvedTotal = expenses
+      .filter(e => e.status === 'Approved')
+      .reduce((acc, curr) => acc + toNumber(curr.amount), 0);
+    const pendingTotal = pendingList.reduce((acc, curr) => acc + toNumber(curr.amount), 0);
+
+    return {
+      totalInvestments: investmentsTotal,
+      approvedExpenses: approvedTotal,
+      pendingExpenses: pendingTotal,
+      currentBalance: investmentsTotal - approvedTotal
+    };
+  }, [investments, expenses, pendingList]);
 
   // Recharts: Calculate Monthly Aggregates for area chart
-  const getChartData = () => {
+  const chartData = useMemo(() => {
     const monthlyMap: Record<string, ChartPoint> = {};
     const allMonthKeys = [
       ...investments.map(i => getMonthKey(i.date)),
@@ -295,10 +337,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
     });
 
     return Object.values(monthlyMap);
-  };
+  }, [investments, expenses]);
 
   // Recharts: Expense Category breakdown for donut chart
-  const getCategoryData = () => {
+  const categoryData = useMemo(() => {
     const categories: Record<string, number> = {};
     expenses.filter(e => e.status === 'Approved').forEach(exp => {
       categories[exp.category] = (categories[exp.category] || 0) + toNumber(exp.amount);
@@ -307,7 +349,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
       name: cat,
       value: categories[cat]
     }));
-  };
+  }, [expenses]);
 
   const COLORS = ['#10b981', '#06b6d4', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#ef4444', '#64748b'];
 
@@ -347,9 +389,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
       
       // Update state
       setExpenses(prev => prev.map(e => e.id === id ? updatedExpense : e));
+      setToast({
+        type: 'success',
+        message: action === 'approve' ? 'Expense approved.' : 'Expense rejected.'
+      });
     } catch (err) {
       console.error(err);
-      alert(getErrorMessage(err, `Could not ${action} expense.`));
+      setToast({ type: 'error', message: getErrorMessage(err, `Could not ${action} expense.`) });
     } finally {
       setUpdatingExpenseId(null);
     }
@@ -645,7 +691,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                     {renderCurrencyAmount(pendingExpenses)}
                   </span>
                   <span className="stat-change" style={{ color: 'var(--text-secondary)' }}>
-                    {expenses.filter(e => e.status === 'Pending').length} requests pending review
+                    {pendingList.length} requests pending review
                   </span>
                 </div>
                 <div className="stat-icon" style={{ color: 'var(--warning)' }}>
@@ -667,9 +713,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                       </div>
                       <BarIcon size={18} style={{ color: 'var(--text-muted)' }} />
                     </div>
+                    {chartData.length === 0 ? (
+                      <div style={{ display: 'flex', height: '300px', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem', textAlign: 'center', padding: '0 16px' }}>
+                        No funding or expense activity yet. Log capital or approve an expense to see the monthly trend.
+                      </div>
+                    ) : (
                     <div style={{ width: '100%', height: '300px', fontSize: '0.8rem' }}>
                       <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={getChartData()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                           <defs>
                             <linearGradient id="colorInflow" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25}/>
@@ -696,6 +747,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
+                    )}
                   </div>
 
                   {/* Right: Pie Chart category breakdown */}
@@ -707,7 +759,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                       </div>
                       <PieIcon size={18} style={{ color: 'var(--text-muted)' }} />
                     </div>
-                    {getCategoryData().length === 0 ? (
+                    {categoryData.length === 0 ? (
                       <div style={{ display: 'flex', height: '240px', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                         No approved expenses to visualize.
                       </div>
@@ -717,7 +769,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
-                                data={getCategoryData()}
+                                data={categoryData}
                                 cx="50%"
                                 cy="50%"
                                 innerRadius={55}
@@ -725,7 +777,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                                 paddingAngle={3}
                                 dataKey="value"
                               >
-                                {getCategoryData().map((_entry, index) => (
+                                {categoryData.map((_entry, index) => (
                                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
                               </Pie>
@@ -742,7 +794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                           </ResponsiveContainer>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', width: '100%' }}>
-                          {getCategoryData().map((item, idx) => (
+                          {categoryData.map((item, idx) => (
                             <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
                               <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: COLORS[idx % COLORS.length] }} />
                               <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{item.name}</span>
@@ -766,7 +818,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                     </div>
                   </div>
 
-                  {expenses.filter(e => e.status === 'Pending').length === 0 ? (
+                  {pendingList.length === 0 ? (
                     <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                       All requested expenses have been reviewed. Clear ledger!
                     </div>
@@ -784,7 +836,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
                           </tr>
                         </thead>
                         <tbody>
-                          {expenses.filter(e => e.status === 'Pending').map((exp) => (
+                          {pendingList.map((exp) => (
                             <tr key={exp.id}>
                               <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1248,6 +1300,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Transient toast notifications */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`toast toast-${toast.type}`}
+          onClick={() => setToast(null)}
+        >
+          {toast.type === 'success' ? <Check size={16} /> : <X size={16} />}
+          <span>{toast.message}</span>
         </div>
       )}
     </div>

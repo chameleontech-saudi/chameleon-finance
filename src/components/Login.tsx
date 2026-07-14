@@ -34,8 +34,8 @@ const readLoginResponse = async (response: Response): Promise<LoginResponse> => 
 };
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('admin@chameleontech.com');
-  const [password, setPassword] = useState('Chameleon2026!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

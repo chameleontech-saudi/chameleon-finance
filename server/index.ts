@@ -1,8 +1,17 @@
 import express from 'express';
 import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'express';
 import cors from 'cors';
-import { Pool } from 'pg';
+import { Pool, types } from 'pg';
 import jwt from 'jsonwebtoken';
+
+// Postgres `date` columns (type OID 1082) are parsed by node-postgres into JS
+// Date objects at the server's LOCAL midnight. Serializing that to JSON via
+// res.json() converts to UTC, which shifts the day backwards for any server
+// running ahead of UTC (e.g. Riyadh UTC+3, Kolkata UTC+5:30 — this app's own
+// SAR/INR regions). A ledger entry dated 2026-07-14 would then display as
+// 2026-07-13 and land in the wrong month on the cash-flow chart. Keep the raw
+// 'YYYY-MM-DD' string instead — exactly what the client already expects.
+types.setTypeParser(1082, (value) => value);
 
 const app = express();
 const port = 3001;
