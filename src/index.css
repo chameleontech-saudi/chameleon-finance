@@ -410,17 +410,60 @@ select.input-control {
   padding: 30px 24px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 32px;
   height: 100vh;
   position: sticky;
   top: 0;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .sidebar-logo {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 40px;
+  min-width: 0;
+}
+
+/* Compact avatar + logout shown in the mobile top bar; hidden on desktop */
+.sidebar-account-compact {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.partner-avatar-sm {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--primary-border);
+  object-fit: cover;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .sidebar-logo img {
@@ -474,13 +517,24 @@ select.input-control {
   color: var(--primary);
 }
 
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+}
+
 .sidebar-partner {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 16px;
-  border-top: 1px solid var(--border-color);
-  margin-top: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-logout {
+  width: 100%;
+  margin-top: 12px;
+  font-size: 0.85rem;
+  padding: 8px 12px;
 }
 
 .partner-avatar {
@@ -687,7 +741,7 @@ select.input-control {
    Responsive Overrides
    ============================================================ */
 
-/* Tablet / small laptop: sidebar becomes a stacked top bar */
+/* Tablet / small laptop: sidebar becomes a compact top app bar */
 @media (max-width: 900px) {
   .dashboard-container {
     flex-direction: column;
@@ -696,38 +750,56 @@ select.input-control {
   .sidebar {
     width: 100%;
     height: auto;
+    flex-direction: column;
+    gap: 12px;
     border-right: none;
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
     z-index: 50;
-    padding: 16px 20px;
-    gap: 16px;
+    padding: 12px 20px;
+    /* Opaque + elevated so scrolling content never bleeds through the sticky bar */
+    background: var(--bg-surface-solid);
+    box-shadow: var(--shadow-md);
   }
 
-  /* Logo + nav group: keep contents compact */
-  .sidebar > div:first-child {
-    gap: 16px !important;
-  }
-
+  /* Brand row: logo on the left, account controls on the right */
   .sidebar-logo {
     margin-bottom: 0;
   }
 
+  .sidebar-account-compact {
+    display: flex;
+  }
+
+  /* Nav collapses into a full-width segmented control */
   .sidebar-menu {
     flex-direction: row;
-    flex-wrap: wrap;
     flex-grow: 0;
     gap: 6px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
   }
 
   .sidebar-item {
-    padding: 10px 14px;
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 8px;
+    font-size: 0.85rem;
+    white-space: nowrap;
   }
 
-  .sidebar-partner {
-    margin-top: 0;
-    border-top: none;
+  .sidebar-item svg {
+    flex-shrink: 0;
+  }
+
+  /* Full partner card + logout button live in the compact controls on mobile */
+  .sidebar-footer {
+    display: none;
   }
 
   .main-viewport {
@@ -743,20 +815,13 @@ select.input-control {
   }
 
   .sidebar {
-    padding: 14px 16px;
-  }
-
-  .sidebar-logo {
-    justify-content: center;
-  }
-
-  .sidebar-menu {
-    justify-content: center;
+    padding: 12px 14px;
   }
 
   .sidebar-item {
-    flex: 1 1 auto;
-    justify-content: center;
+    gap: 6px;
+    padding: 9px 6px;
+    font-size: 0.8rem;
   }
 
   /* Page/section headers stack their title and action buttons */
@@ -804,7 +869,12 @@ select.input-control {
     overflow-y: auto;
   }
 
-  /* Tighten table cells so more fits before horizontal scroll */
+  /* Keep columns readable and let the table scroll horizontally inside its
+     card instead of cramming every column into the viewport width. */
+  .data-table {
+    min-width: 600px;
+  }
+
   .data-table th,
   .data-table td {
     padding: 12px 10px;
@@ -822,6 +892,20 @@ select.input-control {
   }
 
   .sidebar-logo span {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
+  }
+
+  .sidebar-logo img {
+    height: 32px;
+  }
+
+  .sidebar-item {
+    font-size: 0.72rem;
+    padding: 9px 4px;
+  }
+
+  .sidebar-item svg {
+    width: 15px;
+    height: 15px;
   }
 }

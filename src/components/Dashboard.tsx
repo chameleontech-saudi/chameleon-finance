@@ -530,53 +530,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, currentUser, onLogo
 
   return (
     <div className="dashboard-container">
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation (becomes a compact top app bar on mobile) */}
       <aside className="sidebar">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+        <div className="sidebar-brand">
           <div className="sidebar-logo">
             <img src="/logo.png" alt="Chameleon Tech" />
             <span>CHAMELEON</span>
           </div>
 
-          <nav className="sidebar-menu">
-            <button 
-              className={`sidebar-item ${activeTab === 'overview' ? 'active' : ''}`}
-              onClick={() => setActiveTab('overview')}
+          {/* Compact account controls — shown only on mobile */}
+          <div className="sidebar-account-compact">
+            <img
+              className="partner-avatar-sm"
+              src={currentUser.avatar_url || FALLBACK_AVATAR}
+              alt={currentUser.name}
+            />
+            <button
+              className="icon-btn"
+              onClick={onLogout}
+              aria-label="Log out"
+              title="Log out"
             >
-              <Layers size={18} /> Overview
+              <LogOut size={18} />
             </button>
-            <button 
-              className={`sidebar-item ${activeTab === 'investments' ? 'active' : ''}`}
-              onClick={() => setActiveTab('investments')}
-            >
-              <Briefcase size={18} /> Investments
-            </button>
-            <button 
-              className={`sidebar-item ${activeTab === 'expenses' ? 'active' : ''}`}
-              onClick={() => setActiveTab('expenses')}
-            >
-              <CreditCard size={18} /> Expenses
-            </button>
-          </nav>
+          </div>
         </div>
 
-        {/* Current Partner Profile */}
-        <div>
-          <div className="sidebar-partner glass" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
-            <img 
-              className="partner-avatar" 
-              src={currentUser.avatar_url || FALLBACK_AVATAR} 
-              alt={currentUser.name} 
+        <nav className="sidebar-menu">
+          <button
+            className={`sidebar-item ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+          >
+            <Layers size={18} /> Overview
+          </button>
+          <button
+            className={`sidebar-item ${activeTab === 'investments' ? 'active' : ''}`}
+            onClick={() => setActiveTab('investments')}
+          >
+            <Briefcase size={18} /> Investments
+          </button>
+          <button
+            className={`sidebar-item ${activeTab === 'expenses' ? 'active' : ''}`}
+            onClick={() => setActiveTab('expenses')}
+          >
+            <CreditCard size={18} /> Expenses
+          </button>
+        </nav>
+
+        {/* Current Partner Profile — shown at the bottom on desktop */}
+        <div className="sidebar-footer">
+          <div className="sidebar-partner glass">
+            <img
+              className="partner-avatar"
+              src={currentUser.avatar_url || FALLBACK_AVATAR}
+              alt={currentUser.name}
             />
             <div className="partner-info">
               <span className="partner-name">{currentUser.name}</span>
               <span className="partner-role">{currentUser.role}</span>
             </div>
           </div>
-          <button 
-            className="btn btn-secondary" 
+          <button
+            className="btn btn-secondary sidebar-logout"
             onClick={onLogout}
-            style={{ width: '100%', marginTop: '12px', fontSize: '0.85rem', padding: '8px 12px' }}
           >
             <LogOut size={14} /> Log Out
           </button>
